@@ -14,6 +14,7 @@
 include '../includes/session_check.php';
 checkRole('customer');
 include '../configure.php';
+include '../includes/pricing.php';
 include '../includes/customer_header.php';
 
 function show_message($msg, $is_error = false) {
@@ -21,114 +22,123 @@ function show_message($msg, $is_error = false) {
     echo "<div class='$class'>" . htmlspecialchars($msg) . "</div>";
 }
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && !empty($_POST['Quantity']))
+$cart = $_SESSION['pending_cart'] ?? null;
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($cart)) {
+    show_message("Your checkout session expired. Please choose your items again.", true);
+    echo "<p style='text-align:center;'><a class='action-link' href='browse_menu.php'>&larr; Back to Menu</a></p>";
+    include '../includes/footer.php';
+    exit();
+}
+
+csrf_verify();
+
+if (!isset($_SESSION['user_id']))
 {
-    csrf_verify();
+    show_message("Session expired. Please log in again.", true);
+    include '../includes/footer.php';
+    exit();
+}
 
-    if (!isset($_SESSION['user_id']))
-    {
-        show_message("Session expired. Please log in again.", true);
-        include '../includes/footer.php';
-        exit();
+$user_id = $_SESSION['user_id'];
+
+// Re-validate stock right before committing — it may have changed since checkout.php ran.
+$subtotal = 0.0;
+$insufficient = [];
+foreach ($cart as $item_id => $item) {
+    $stmt = $conn->prepare("SELECT Stock_Quantity FROM food_items WHERE Item_ID = ? AND available = 1");
+    $stmt->bind_param("i", $item_id);
+    $stmt->execute();
+    $food = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$food) {
+        $insufficient[] = $item['name'] . " (no longer available)";
+        continue;
     }
-
-    $user_id = $_SESSION['user_id'];
-    $quantities = $_POST['Quantity'];
-
-    // Filter only items with quantity > 0
-    $order_items = [];
-    foreach ($quantities as $food_id => $qty)
-    {
-        $qty = intval($qty);
-        if ($qty > 0)
-        {
-            $order_items[$food_id] = $qty;
-        }
+    if ($food['Stock_Quantity'] !== null && $item['qty'] > (int)$food['Stock_Quantity']) {
+        $insufficient[] = $item['name'] . " (only " . (int)$food['Stock_Quantity'] . " left)";
+        continue;
     }
+    $subtotal += $item['price'] * $item['qty'];
+}
 
-    if (empty($order_items))
-    {
-        show_message("Please select at least one item with quantity greater than zero.", true);
-        include '../includes/footer.php';
-        exit();
+if (!empty($insufficient)) {
+    show_message("Some items changed while you were checking out: " . implode(', ', $insufficient) . ". Please review your order again.", true);
+    echo "<p style='text-align:center;'><a class='action-link' href='browse_menu.php'>&larr; Back to Menu</a></p>";
+    include '../includes/footer.php';
+    exit();
+}
+
+$totals = calculate_order_totals($subtotal);
+$delivery_fee = $totals['delivery_fee'];
+$tax = $totals['tax'];
+$total = $totals['total'];
+
+$delivery_address = trim($_POST['delivery_address'] ?? '');
+$delivery_time_choice = ($_POST['delivery_time_choice'] ?? 'ASAP') === 'Scheduled' ? 'Scheduled' : 'ASAP';
+$scheduled_time = trim($_POST['scheduled_time'] ?? '');
+$delivery_time = $delivery_time_choice === 'Scheduled' && $scheduled_time !== ''
+    ? $scheduled_time
+    : 'ASAP';
+$special_instructions = trim($_POST['special_instructions'] ?? '');
+$payment_method = ($_POST['payment_method'] ?? '') === 'Cash on Delivery' ? 'Cash on Delivery' : 'Cash on Delivery'; // only option live right now
+
+if ($delivery_address === '') {
+    show_message("Please provide a delivery address.", true);
+    echo "<p style='text-align:center;'><a class='action-link' href='browse_menu.php'>&larr; Back to Menu</a></p>";
+    include '../includes/footer.php';
+    exit();
+}
+
+$status = "Pending";
+$payment_status = "Unpaid"; // Cash on Delivery is settled at the door
+
+$stmt = $conn->prepare(
+    "INSERT INTO orders (User_ID, Total, Status, Delivery_Fee, Tax, Delivery_Address, Delivery_Time, Special_Instructions, Payment_Method, Payment_Status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+);
+$stmt->bind_param(
+    "idsddsssss",
+    $user_id, $total, $status, $delivery_fee, $tax,
+    $delivery_address, $delivery_time, $special_instructions, $payment_method, $payment_status
+);
+
+if ($stmt->execute())
+{
+    $order_id = $stmt->insert_id;
+    $stmt->close();
+
+    $item_stmt = $conn->prepare("INSERT INTO order_items (Order_ID, Item_ID, Quantity, Price) VALUES (?, ?, ?, ?)");
+    $stock_stmt = $conn->prepare("UPDATE food_items SET Stock_Quantity = Stock_Quantity - ? WHERE Item_ID = ? AND Stock_Quantity IS NOT NULL");
+    $out_of_stock_stmt = $conn->prepare("UPDATE food_items SET available = 0 WHERE Item_ID = ? AND Stock_Quantity IS NOT NULL AND Stock_Quantity <= 0");
+
+    foreach ($cart as $item_id => $item) {
+        $item_stmt->bind_param("iiid", $order_id, $item_id, $item['qty'], $item['price']);
+        $item_stmt->execute();
+
+        // Decrement stock for tracked items, then auto-hide if it just hit zero.
+        $stock_stmt->bind_param("ii", $item['qty'], $item_id);
+        $stock_stmt->execute();
+        $out_of_stock_stmt->bind_param("i", $item_id);
+        $out_of_stock_stmt->execute();
     }
+    $item_stmt->close();
+    $stock_stmt->close();
+    $out_of_stock_stmt->close();
 
-    // Get item details and prepare order summary string
-    $items_detail = [];
-    $total_price = 0.0;
+    unset($_SESSION['pending_cart'], $_SESSION['pending_subtotal']);
 
-    foreach ($order_items as $food_id => $qty)
-    {
-        $stmt = $conn->prepare("SELECT Name, Price FROM food_items WHERE Item_ID = ?");
-        if (!$stmt) {
-            die("Prepare failed: " . $conn->error);
-        }
-        $stmt->bind_param("i", $food_id);
-        $stmt->execute();
-        $stmt->bind_result($name, $price);
-        if ($stmt->fetch())
-        {
-            $items_detail[] = htmlspecialchars($name) . " (x" . $qty . ")";
-            $total_price += $price * $qty;
-        }
-        $stmt->close();
-    }
-
-    if (empty($items_detail))
-    {
-        show_message("Selected items are invalid.", true);
-        include '../includes/footer.php';
-        exit();
-    }
-
-    $items_string = implode(", ", $items_detail);
-    $status = "Pending";
-
-    // Insert order record into the orders table
-    $stmt = $conn->prepare("INSERT INTO orders (User_ID, Total, Status) VALUES (?, ?, ?)");
-    if (!$stmt) {
-        die("Prepare failed: " . $conn->error);
-    }
-    $stmt->bind_param("ids", $user_id, $total_price, $status);
-
-    if ($stmt->execute())
-    {
-        $order_id = $stmt->insert_id; // get inserted order id
-        $stmt->close();
-
-        // Save each item + quantity + price so order history can show line items later
-        $item_stmt = $conn->prepare("INSERT INTO order_items (Order_ID, Item_ID, Quantity, Price) VALUES (?, ?, ?, ?)");
-        if ($item_stmt) {
-            foreach ($order_items as $food_id => $qty) {
-                // Re-look up price so what we store matches what was actually charged
-                $price_stmt = $conn->prepare("SELECT Price FROM food_items WHERE Item_ID = ?");
-                $price_stmt->bind_param("i", $food_id);
-                $price_stmt->execute();
-                $price_stmt->bind_result($item_price);
-                if ($price_stmt->fetch()) {
-                    $item_stmt->bind_param("iiid", $order_id, $food_id, $qty, $item_price);
-                    $item_stmt->execute();
-                }
-                $price_stmt->close();
-            }
-            $item_stmt->close();
-        }
-
-        echo "<div class='order-message'><div class='order-spinner'></div>Order placed successfully! Redirecting to your order history...</div>";
-        echo "<script>setTimeout(function(){ window.location.href = 'order_history.php'; }, 1800);</script>";
-        include '../includes/footer.php';
-        exit();
-    }
-    else
-    {
-        error_log("Order insert failed: " . $stmt->error);
-        show_message("Something went wrong while placing your order. Please try again.", true);
-        $stmt->close();
-    }
+    echo "<div class='order-message'><div class='order-spinner'></div>Order placed successfully! Redirecting to your order history...</div>";
+    echo "<script>setTimeout(function(){ window.location.href = 'order_history.php'; }, 1800);</script>";
+    include '../includes/footer.php';
+    exit();
 }
 else
 {
-    show_message("Invalid request.", true);
+    error_log("Order insert failed: " . $stmt->error);
+    show_message("Something went wrong while placing your order. Please try again.", true);
+    $stmt->close();
 }
 
 include '../includes/footer.php';

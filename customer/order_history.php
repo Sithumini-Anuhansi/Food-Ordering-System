@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Food Ordering System - Place Order</title>
+    <title>Food Ordering System - Order History</title>
     <link rel="stylesheet" href="../style.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 </head>
@@ -19,6 +19,15 @@ include '../includes/customer_header.php';
 echo "<div class='order-history-container'>";
 echo "<h2>Your Order History</h2>";
 
+if (isset($_SESSION['success'])) {
+    echo "<div class='success-message'>" . htmlspecialchars($_SESSION['success']) . "</div>";
+    unset($_SESSION['success']);
+}
+if (isset($_SESSION['error'])) {
+    echo "<div class='error-message'>" . htmlspecialchars($_SESSION['error']) . "</div>";
+    unset($_SESSION['error']);
+}
+
 if (!isset($_SESSION['user_id'])) 
 {
     echo "<div class='order-history-message'>Session expired. Please log in again.</div>";
@@ -30,7 +39,8 @@ if (!isset($_SESSION['user_id']))
 $user_id = $_SESSION['user_id'];
 
 // Select orders for the user
-$query = "SELECT ID, Total, Status, Order_Time FROM orders WHERE User_ID = ? ORDER BY Order_Time DESC";
+$query = "SELECT ID, Total, Status, Order_Time, Delivery_Fee, Tax, Delivery_Address, Delivery_Time, Special_Instructions, Payment_Method, Payment_Status
+          FROM orders WHERE User_ID = ? ORDER BY Order_Time DESC";
 $stmt = $conn->prepare($query);
 
 if (!$stmt) 
@@ -56,7 +66,7 @@ if (!$result)
 if ($result->num_rows > 0) 
 {
     echo "<table class='order-history-table'>";
-    echo "<tr><th>Order ID</th><th>Items</th><th>Total</th><th>Status</th><th>Date</th></tr>";
+    echo "<tr><th>Order ID</th><th>Items</th><th>Delivery</th><th>Payment</th><th>Total</th><th>Status</th><th>Date</th><th>Action</th></tr>";
 
     while ($row = $result->fetch_assoc()) 
     {
@@ -81,12 +91,38 @@ if ($result->num_rows > 0)
             }
         }
 
+        $delivery_text = htmlspecialchars($row['Delivery_Time'] ?: 'ASAP');
+        if (!empty($row['Delivery_Address'])) {
+            $delivery_text .= "<br><span style='color:#666;font-size:0.9em;'>" . htmlspecialchars($row['Delivery_Address']) . "</span>";
+        }
+        if (!empty($row['Special_Instructions'])) {
+            $delivery_text .= "<br><span style='color:#888;font-size:0.85em;'><em>" . htmlspecialchars($row['Special_Instructions']) . "</em></span>";
+        }
+
+        $payment_text = htmlspecialchars($row['Payment_Method']) . "<br><span style='color:#666;font-size:0.9em;'>" . htmlspecialchars($row['Payment_Status']) . "</span>";
+
+        $total_text = "$" . number_format($row['Total'], 2)
+            . "<br><span style='color:#666;font-size:0.85em;'>incl. $" . number_format($row['Delivery_Fee'], 2) . " delivery, $" . number_format($row['Tax'], 2) . " tax</span>";
+
         echo "<tr>";
         echo "<td>" . htmlspecialchars($row['ID']) . "</td>";
         echo "<td>" . $items_text . "</td>";
-        echo "<td>" . htmlspecialchars($row['Total']) . "</td>";
+        echo "<td>" . $delivery_text . "</td>";
+        echo "<td>" . $payment_text . "</td>";
+        echo "<td>" . $total_text . "</td>";
         echo "<td>" . htmlspecialchars($row['Status']) . "</td>";
         echo "<td>" . htmlspecialchars($row['Order_Time']) . "</td>";
+        echo "<td>";
+        if ($row['Status'] === 'Pending') {
+            echo "<form method='POST' action='cancel_order.php' onsubmit=\"return confirm('Cancel this order?')\">"
+               . csrf_field()
+               . "<input type='hidden' name='order_id' value='" . (int)$row['ID'] . "'>"
+               . "<button type='submit' style='border:none;background:none;cursor:pointer;color:#e74c3c;font:inherit;'>Cancel</button>"
+               . "</form>";
+        } else {
+            echo "—";
+        }
+        echo "</td>";
         echo "</tr>";
     }
     echo "</table>";

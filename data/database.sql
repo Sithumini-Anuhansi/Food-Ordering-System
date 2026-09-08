@@ -2,32 +2,44 @@ CREATE DATABASE IF NOT EXISTS `food-ordering-system`;
 USE `food-ordering-system`;
 
 CREATE TABLE IF NOT EXISTS users (
-    User_ID       INT AUTO_INCREMENT PRIMARY KEY,
-    Role          VARCHAR(20)  NOT NULL,   -- 'admin', 'customer', 'kitchen', 'delivery'
-    Name          VARCHAR(100) NOT NULL,
-    Email         VARCHAR(150) NOT NULL UNIQUE,
-    Password      VARCHAR(255) NOT NULL,   -- stored with password_hash()
-    Phone_Number  VARCHAR(20),
-    Address       VARCHAR(255)
+    User_ID                INT AUTO_INCREMENT PRIMARY KEY,
+    Role                   VARCHAR(20)  NOT NULL,   -- 'admin', 'customer', 'kitchen', 'delivery'
+    Name                   VARCHAR(100) NOT NULL,
+    Email                  VARCHAR(150) NOT NULL UNIQUE,
+    Password               VARCHAR(255) NOT NULL,   -- stored with password_hash()
+    Phone_Number           VARCHAR(20),
+    Address                VARCHAR(255),
+    Reset_Token            VARCHAR(64)  NULL,       -- forgot-password flow
+    Reset_Token_Expiry     DATETIME     NULL,
+    Failed_Login_Attempts  INT NOT NULL DEFAULT 0,  -- login rate limiting
+    Lockout_Until          DATETIME     NULL
 );
 
 CREATE TABLE IF NOT EXISTS food_items (
-    Item_ID      INT AUTO_INCREMENT PRIMARY KEY,
-    Name         VARCHAR(150) NOT NULL,
-    Description  TEXT,
-    Price        DECIMAL(10,2) NOT NULL,
-    Image        VARCHAR(255),
-    Category     VARCHAR(100),
-    Rating       DECIMAL(2,1) DEFAULT 0.0,
-    available     TINYINT(1) NOT NULL DEFAULT 1   -- used by api/get_menu.php
+    Item_ID         INT AUTO_INCREMENT PRIMARY KEY,
+    Name            VARCHAR(150) NOT NULL,
+    Description     TEXT,
+    Price           DECIMAL(10,2) NOT NULL,
+    Image           VARCHAR(255),
+    Category        VARCHAR(100),
+    Rating          DECIMAL(2,1) DEFAULT 0.0,
+    available        TINYINT(1) NOT NULL DEFAULT 1,  -- used by api/get_menu.php
+    Stock_Quantity  INT NULL   -- NULL = unlimited/not tracked; otherwise decremented per order
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-    ID          INT AUTO_INCREMENT PRIMARY KEY,
-    User_ID     INT NOT NULL,
-    Total       DECIMAL(10,2) NOT NULL,
-    Status      VARCHAR(30) NOT NULL DEFAULT 'Pending',
-    Order_Time  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ID                     INT AUTO_INCREMENT PRIMARY KEY,
+    User_ID                INT NOT NULL,
+    Total                  DECIMAL(10,2) NOT NULL,          -- items + Delivery_Fee + Tax
+    Status                 VARCHAR(30) NOT NULL DEFAULT 'Pending',
+    Order_Time             DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Delivery_Fee           DECIMAL(10,2) NOT NULL DEFAULT 0,
+    Tax                    DECIMAL(10,2) NOT NULL DEFAULT 0,
+    Delivery_Address       VARCHAR(255) NULL,   -- snapshot at order time (may differ from profile)
+    Delivery_Time          VARCHAR(50)  NULL,   -- 'ASAP' or a scheduled date/time string
+    Special_Instructions   TEXT NULL,
+    Payment_Method         VARCHAR(30) NOT NULL DEFAULT 'Cash on Delivery',
+    Payment_Status         VARCHAR(20) NOT NULL DEFAULT 'Unpaid',
     FOREIGN KEY (User_ID) REFERENCES users(User_ID)
 );
 

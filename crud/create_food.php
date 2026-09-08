@@ -18,6 +18,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $category = $_POST['category'];
     $rating = isset($_POST['rating']) ? floatval($_POST['rating']) : 0.0;
 
+    // Blank = unlimited/not tracked; a number means we'll decrement it per order.
+    $stock = trim($_POST['stock'] ?? '');
+    $stockValue = ($stock === '') ? null : max(0, intval($stock));
+
     // Images live alongside the rest of the site's food photos in /image,
     // same folder the seeded menu items use, so the storefront can find them
     // without needing a second "uploads" convention.
@@ -45,8 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$error && $name && $price > 0 && $category) {
-        $stmt = $conn->prepare("INSERT INTO food_items (Name, Description, Price, Image, Category, Rating) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssdssd", $name, $description, $price, $imagePath, $category, $rating);
+        $stmt = $conn->prepare("INSERT INTO food_items (Name, Description, Price, Image, Category, Rating, Stock_Quantity) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssdssdi", $name, $description, $price, $imagePath, $category, $rating, $stockValue);
         if ($stmt->execute()) {
             $success = "Food item added successfully.";
             $stmt->close();
@@ -123,6 +127,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <label>
             Rating (optional):
             <input type="number" name="rating" step="0.1" min="0" max="5" placeholder="0.0 to 5.0">
+        </label>
+
+        <label>
+            Stock Quantity (optional — leave blank for unlimited):
+            <input type="number" name="stock" step="1" min="0" placeholder="Leave blank for unlimited">
         </label>
 
         <input type="submit" value="Add Item">
