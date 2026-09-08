@@ -26,7 +26,7 @@ include '../configure.php';
     ?>
     <a class="add-btn" href="../crud/create_food.php"><i class="fa fa-plus"></i> Add New Food Item</a>
     <?php
-    $query = "SELECT Item_ID, Name, Description, Price, Image, Category, Rating FROM food_items ORDER BY Name ASC";
+    $query = "SELECT Item_ID, Name, Description, Price, Image, Category, Rating, available, Stock_Quantity FROM food_items ORDER BY Name ASC";
     $result = mysqli_query($conn, $query);
 
     if (!$result) {
@@ -45,6 +45,7 @@ include '../configure.php';
                 <th>Category</th>
                 <th>Price (₹)</th>
                 <th>Rating</th>
+                <th>Stock</th>
                 <th>Actions</th>
             </tr>
           </thead>
@@ -69,6 +70,14 @@ include '../configure.php';
             $imgSrc = "../image/Food-Plate.png";
         }
 
+        if ($row['Stock_Quantity'] === null) {
+            $stockDisplay = "<span style='color:#666;'>Unlimited</span>";
+        } elseif ((int)$row['Stock_Quantity'] <= 0) {
+            $stockDisplay = "<span style='color:#e74c3c;font-weight:bold;'>Out of stock</span>";
+        } else {
+            $stockDisplay = (int)$row['Stock_Quantity'];
+        }
+
         echo "<tr>";
         echo "<td>{$id}</td>";
         echo "<td><img src='{$imgSrc}' alt='{$name}' class='food-img'></td>";
@@ -77,6 +86,7 @@ include '../configure.php';
         echo "<td><span class='category-badge'>{$category}</span></td>";
         echo "<td>{$price}</td>";
         echo "<td class='rating'>{$stars}</td>";
+        echo "<td>{$stockDisplay}</td>";
         echo "<td class='action-links'>
                 <a href='../crud/update_food.php?id={$id}'><i class='fa fa-edit'></i> Edit</a>
                 <form method='POST' action='../crud/delete_food.php' style='display:inline;' onsubmit=\"return confirm('Delete this item?')\">

@@ -18,10 +18,10 @@ $id = intval($_GET['id']);
 $error = '';
 
 // Fetch existing data
-$stmt = $conn->prepare("SELECT Name, Description, Price, Image, Category, Rating FROM food_items WHERE Item_ID=?");
+$stmt = $conn->prepare("SELECT Name, Description, Price, Image, Category, Rating, Stock_Quantity FROM food_items WHERE Item_ID=?");
 $stmt->bind_param("i", $id);
 $stmt->execute();
-$stmt->bind_result($name, $description, $price, $image, $category, $rating);
+$stmt->bind_result($name, $description, $price, $image, $category, $rating, $stock);
 if (!$stmt->fetch()) {
     echo "<div class='error-message'>Item not found.</div>";
     include '../includes/footer.php';
@@ -42,6 +42,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $category = $_POST['category'];
     $rating = floatval($_POST['rating']);
     $imagePath = $image; // default to existing
+
+    $stockInput = trim($_POST['stock'] ?? '');
+    $stockValue = ($stockInput === '') ? null : max(0, intval($stockInput));
 
     // Image upload if provided — stored in /image alongside the rest of the
     // site's food photos (same convention the seeded menu items use).
@@ -66,8 +69,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     if (empty($error) && $name && $price > 0 && $category) {
-        $stmt = $conn->prepare("UPDATE food_items SET Name=?, Description=?, Price=?, Image=?, Category=?, Rating=? WHERE Item_ID=?");
-        $stmt->bind_param("ssdssdi", $name, $description, $price, $imagePath, $category, $rating, $id);
+        $stmt = $conn->prepare("UPDATE food_items SET Name=?, Description=?, Price=?, Image=?, Category=?, Rating=?, Stock_Quantity=? WHERE Item_ID=?");
+        $stmt->bind_param("ssdssdii", $name, $description, $price, $imagePath, $category, $rating, $stockValue, $id);
 
         if ($stmt->execute()) {
             $stmt->close();
@@ -86,6 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // Keep the form showing what the admin just typed, including the new image if one was set.
     $image = $imagePath;
+    $stock = $stockValue;
 }
 ?>
 
@@ -136,6 +140,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <label>
             Rating:
             <input type="number" step="0.1" max="5" min="0" name="rating" value="<?= htmlspecialchars($rating) ?>" required>
+        </label>
+        <label>
+            Stock Quantity (optional — leave blank for unlimited):
+            <input type="number" step="1" min="0" name="stock" value="<?= htmlspecialchars($stock ?? '') ?>" placeholder="Leave blank for unlimited">
         </label>
         <label>
             Image: <br>
