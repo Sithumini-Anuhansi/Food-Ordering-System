@@ -3,7 +3,10 @@
 ## Before you run it — manual checklist
 
 1. **Create `.env`** (see step 2 below) — the app won't connect to a database without it.
-2. **Import `data/database.sql`** into MySQL (step 3).
+2. **Import `data/database.sql`** into MySQL (step 3). If you already have
+   a database from an earlier version of this project, run
+   `data/migration_v2.sql` instead (see section 8 below) to add the new
+   columns without losing existing data.
 3. **Create demo login accounts** for customer/kitchen/delivery by running:
    ```bash
    php data/seed_demo_users.php
@@ -179,3 +182,69 @@ Order status flow: `Pending → Preparing → Ready for Delivery → Delivered`
   now root-relative (`/auth/Register.php`, `/Home.php#Home`) instead of
   baking in the project folder's name, so renaming the folder — or
   deploying it at the web root under any name — won't break these.
+
+## 8. Third pass: real ordering flow + operational features
+
+**Run `mysql -u root -p food-ordering-system < data/migration_v2.sql`
+first** if you already have data you want to keep — this adds all the new
+columns below without touching existing rows. Fresh installs get them
+automatically via `database.sql`.
+
+- **The customer ordering page now shows the exact same menu as the public
+  Menu page** (`customer/browse_menu.php`) — same category carousel, same
+  item cards — instead of a bare table. Each card has a quantity stepper
+  and its own "Order Now" button; clicking it (even at the default
+  quantity of 0) adds that item and takes you to checkout with everything
+  selected so far across the whole page.
+- **Real checkout flow**: `customer/checkout.php` shows an order summary,
+  then collects delivery address (prefilled from your profile, editable
+  per order), delivery time (ASAP or scheduled), special instructions,
+  and payment method — before `customer/place_order.php` finalizes it.
+  Delivery fee (flat $2.50) and 8% tax are calculated server-side in
+  `includes/pricing.php`, the single place that formula lives so the
+  preview and the saved order can never disagree.
+- **Payment**: structured as "Cash on Delivery" for now, with a `Card
+  Payment (coming soon)` option shown-but-disabled — the `orders` table
+  already has `Payment_Method`/`Payment_Status` columns so a real gateway
+  (Stripe, PayHere, etc.) can be dropped in later without a schema change.
+  **This needs your own payment provider account/API keys** — not
+  something that can be wired up without them.
+- **Order cancellation**: customers can cancel a still-`Pending` order
+  from Order History (`customer/cancel_order.php`); any reserved stock is
+  automatically given back.
+- **Inventory tracking**: food items now have an optional
+  `Stock_Quantity` (admin's Add/Edit Food Item forms) — leave it blank
+  for unlimited (the old behavior), or set a number to have it decrement
+  per order and auto-mark the item unavailable at zero.
+- **Forgot / reset password**: `auth/forgot_password.php` generates a
+  time-limited reset token and attempts to email it; since most local/dev
+  setups have no SMTP configured, the reset link is also shown directly
+  on screen so the flow is testable without a mail server. Wire up real
+  SMTP (or a transactional email service) for production use.
+- **Login rate limiting**: 5 failed attempts locks the account for 15
+  minutes (`users.Failed_Login_Attempts` / `Lockout_Until`). Login error
+  messages no longer reveal whether an email is registered.
+- **Stale order warning**: the kitchen dashboard flags any order that's
+  been sitting for more than 15 minutes. Kitchen and delivery dashboards
+  also auto-refresh every 30 seconds so new orders show up without a
+  manual reload.
+- **Admin analytics** (`admin/analytics.php`): total revenue, order
+  count, average order value, orders by status, last-7-days sales, and
+  top 5 items by quantity sold.
+
+### Deferred — needs your own accounts/infrastructure
+
+These came up as "real system" gaps but can't be implemented without
+credentials or infrastructure only you can provide:
+- **Real payment gateway** (Stripe/PayHere/etc.) — needs a merchant
+  account and API keys; the schema is ready for it (see above).
+- **Real email/SMS notifications** — needs SMTP or an email/SMS provider
+  (SendGrid, Twilio, etc.); forgot-password is wired to attempt `mail()`
+  but that's it.
+- **Email verification on registration** — same email-sending dependency.
+- **HTTPS + `APP_FORCE_SECURE_COOKIES=true`** — needs a real domain and
+  TLS certificate.
+- **PDO migration, automated tests, CI/CD, staging environment,
+  monitoring/error tracking, legal pages (privacy policy/ToS)** — all
+  process/infrastructure work rather than something with a clear
+  "finished" state; ask if you want help starting any of these.
