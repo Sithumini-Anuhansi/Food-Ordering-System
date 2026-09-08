@@ -23,6 +23,7 @@ if (php_sapi_name() !== 'cli') {
 }
 
 require_once __DIR__ . '/../configure.php';
+require_once __DIR__ . '/../includes/pricing.php';
 
 $demo_users = [
     ['role' => 'customer', 'name' => 'Demo Customer', 'email' => 'customer@example.com', 'password' => 'customer123', 'phone' => '0710000001', 'address' => '12 Demo Lane, Colombo'],
@@ -69,11 +70,11 @@ function get_item($conn, $name)
     return $row; // ['Item_ID' => ..., 'Price' => ...] or null
 }
 
-function create_demo_order($conn, $user_id, $status, $days_ago, $items)
+function create_demo_order($conn, $user_id, $status, $days_ago, $items, $delivery_address, $delivery_time, $special_instructions = '')
 {
     // $items: [ ['name' => ..., 'qty' => ...], ... ]
     $line_items = [];
-    $total = 0.0;
+    $subtotal = 0.0;
 
     foreach ($items as $it) {
         $food = get_item($conn, $it['name']);
@@ -81,15 +82,29 @@ function create_demo_order($conn, $user_id, $status, $days_ago, $items)
             continue; // seeded menu item not found, skip it
         }
         $line_items[] = ['item_id' => $food['Item_ID'], 'qty' => $it['qty'], 'price' => $food['Price']];
-        $total += $food['Price'] * $it['qty'];
+        $subtotal += $food['Price'] * $it['qty'];
     }
 
     if (empty($line_items)) {
         return null;
     }
 
-    $stmt = $conn->prepare("INSERT INTO orders (User_ID, Total, Status, Order_Time) VALUES (?, ?, ?, DATE_SUB(NOW(), INTERVAL ? DAY))");
-    $stmt->bind_param("idsi", $user_id, $total, $status, $days_ago);
+    $totals = calculate_order_totals($subtotal);
+    $total = $totals['total'];
+    $delivery_fee = $totals['delivery_fee'];
+    $tax = $totals['tax'];
+    $payment_method = 'Cash on Delivery';
+    $payment_status = ($status === 'Delivered') ? 'Paid' : 'Unpaid';
+
+    $stmt = $conn->prepare(
+        "INSERT INTO orders (User_ID, Total, Status, Order_Time, Delivery_Fee, Tax, Delivery_Address, Delivery_Time, Special_Instructions, Payment_Method, Payment_Status)
+         VALUES (?, ?, ?, DATE_SUB(NOW(), INTERVAL ? DAY), ?, ?, ?, ?, ?, ?, ?)"
+    );
+    $stmt->bind_param(
+        "idsiddsssss",
+        $user_id, $total, $status, $days_ago, $delivery_fee, $tax,
+        $delivery_address, $delivery_time, $special_instructions, $payment_method, $payment_status
+    );
     if (!$stmt->execute()) {
         echo "Failed to create demo order: " . $stmt->error . "\n";
         return null;
@@ -126,16 +141,17 @@ if ($customer_row) {
     if ($already_has_orders) {
         echo "Skipped demo orders — demo customer already has order history.\n";
     } else {
+        $demo_address = '12 Demo Lane, Colombo';
         $demo_orders = [
-            ['status' => 'Delivered',           'days_ago' => 3, 'items' => [['name' => 'Cheeseburger', 'qty' => 2], ['name' => 'French Fries', 'qty' => 1]]],
-            ['status' => 'Delivered',           'days_ago' => 1, 'items' => [['name' => 'Chicken Sandwich', 'qty' => 1], ['name' => 'Onion Rings', 'qty' => 1]]],
-            ['status' => 'Ready for Delivery',  'days_ago' => 0, 'items' => [['name' => 'BBQ Pulled Pork Sliders', 'qty' => 2], ['name' => 'Mozzarella Sticks', 'qty' => 1]]],
-            ['status' => 'Preparing',           'days_ago' => 0, 'items' => [['name' => 'Spicy Chicken Wings', 'qty' => 1], ['name' => 'Loaded Nachos', 'qty' => 1]]],
-            ['status' => 'Pending',             'days_ago' => 0, 'items' => [['name' => 'Fish Fillet Burger', 'qty' => 1], ['name' => 'Chicken Popcorn', 'qty' => 1]]],
+            ['status' => 'Delivered',           'days_ago' => 3, 'time' => 'ASAP',                  'instructions' => '',                    'items' => [['name' => 'Cheeseburger', 'qty' => 2], ['name' => 'French Fries', 'qty' => 1]]],
+            ['status' => 'Delivered',           'days_ago' => 1, 'time' => 'ASAP',                  'instructions' => 'Extra napkins please', 'items' => [['name' => 'Chicken Sandwich', 'qty' => 1], ['name' => 'Onion Rings', 'qty' => 1]]],
+            ['status' => 'Ready for Delivery',  'days_ago' => 0, 'time' => 'ASAP',                  'instructions' => '',                    'items' => [['name' => 'BBQ Pulled Pork Sliders', 'qty' => 2], ['name' => 'Mozzarella Sticks', 'qty' => 1]]],
+            ['status' => 'Preparing',           'days_ago' => 0, 'time' => 'ASAP',                  'instructions' => 'No onions',            'items' => [['name' => 'Spicy Chicken Wings', 'qty' => 1], ['name' => 'Loaded Nachos', 'qty' => 1]]],
+            ['status' => 'Pending',             'days_ago' => 0, 'time' => date('Y-m-d\TH:i', strtotime('+2 hours')), 'instructions' => 'Leave at the door', 'items' => [['name' => 'Fish Fillet Burger', 'qty' => 1], ['name' => 'Chicken Popcorn', 'qty' => 1]]],
         ];
 
         foreach ($demo_orders as $order) {
-            $order_id = create_demo_order($conn, $customer_id, $order['status'], $order['days_ago'], $order['items']);
+            $order_id = create_demo_order($conn, $customer_id, $order['status'], $order['days_ago'], $order['items'], $demo_address, $order['time'], $order['instructions']);
             if ($order_id) {
                 echo "Created demo order #$order_id ({$order['status']}) for the demo customer.\n";
             }
@@ -143,6 +159,25 @@ if ($customer_row) {
     }
 } else {
     echo "Demo customer account not found — skipping demo orders (run this script again after it's created).\n";
+}
+
+// A couple of items with tracked stock, so the inventory feature has
+// something to demo (most items are left as unlimited/untracked).
+$stock_demo = [
+    'Chicken Popcorn' => 8,   // limited stock, still orderable
+    'Mango Mousse'     => 0,   // sold out — shows the "Out of stock" state
+];
+foreach ($stock_demo as $item_name => $qty) {
+    $food = get_item($conn, $item_name);
+    if (!$food) continue;
+    $upd = $conn->prepare("UPDATE food_items SET Stock_Quantity = ?, available = ? WHERE Item_ID = ? AND Stock_Quantity IS NULL");
+    $available = $qty > 0 ? 1 : 0;
+    $upd->bind_param("iii", $qty, $available, $food['Item_ID']);
+    $upd->execute();
+    if ($upd->affected_rows > 0) {
+        echo "Set stock for \"$item_name\" to $qty.\n";
+    }
+    $upd->close();
 }
 
 echo "\nDone. Change these passwords (or delete these accounts) before going anywhere near production.\n";
