@@ -10,6 +10,7 @@
             <a href="../admin/manage_users.php" style="margin-right:20px; color:black; font-weight:bold; text-decoration:none;"><i class="fa fa-users"></i> Users</a>
             <a href="../admin/manage_orders.php" style="margin-right:20px; color:black; font-weight:bold; text-decoration:none;"><i class="fa fa-list"></i> Orders</a>
             <a href="../admin/manage_food_items.php" style="margin-right:20px; color:black; font-weight:bold; text-decoration:none;"><i class="fa fa-utensils"></i> Food Items</a>
+            <a href="../admin/analytics.php" style="margin-right:20px; color:black; font-weight:bold; text-decoration:none;"><i class="fa fa-chart-line"></i> Analytics</a>
             <a href="../pages/kitchen.php" style="margin-right:20px; color:black; font-weight:bold; text-decoration:none;"><i class="fa fa-fire-burner"></i> Kitchen View</a>
             <a href="../pages/delivery.php" style="margin-right:20px; color:black; font-weight:bold; text-decoration:none;"><i class="fa fa-truck"></i> Delivery View</a>
             <a href="../account/profile.php" style="margin-right:20px; color:black; font-weight:bold; text-decoration:none;"><i class="fa fa-user"></i> Profile</a>
