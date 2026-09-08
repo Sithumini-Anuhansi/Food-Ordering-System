@@ -81,12 +81,22 @@ include '../includes/staff_header.php';
                 <?php while ($row = mysqli_fetch_assoc($result)):
                     $next_status = $row['Status'] === 'Pending' ? 'Preparing' : 'Ready for Delivery';
                     $button_label = $row['Status'] === 'Pending' ? 'Start Preparing' : 'Mark Ready for Delivery';
+                    $minutes_old = (time() - strtotime($row['Order_Time'])) / 60;
+                    $is_stale = $minutes_old > 15;
+                    $row_style = $is_stale ? 'background:#fdecea;' : '';
                 ?>
-                <tr>
+                <tr style="<?= $row_style ?>">
                     <td><?= (int)$row['ID'] ?></td>
                     <td><?= htmlspecialchars($row['Customer_Name']) ?></td>
                     <td><?= number_format($row['Total'], 2) ?></td>
-                    <td><?= htmlspecialchars($row['Status']) ?></td>
+                    <td>
+                        <?= htmlspecialchars($row['Status']) ?>
+                        <?php if ($is_stale): ?>
+                            <br><span style="color:#e74c3c; font-size:0.85em; font-weight:bold;">
+                                <i class="fa fa-triangle-exclamation"></i> waiting <?= (int)$minutes_old ?> min
+                            </span>
+                        <?php endif; ?>
+                    </td>
                     <td><?= htmlspecialchars($row['Order_Time']) ?></td>
                     <td>
                         <form method="POST" style="display:inline;">
@@ -104,6 +114,11 @@ include '../includes/staff_header.php';
         </table>
     <?php endif; ?>
 </div>
+
+<script>
+    // Auto-refresh so new orders show up without a manual reload.
+    setTimeout(function () { window.location.reload(); }, 30000);
+</script>
 
 <?php include '../includes/footer.php'; ?>
 </body>
