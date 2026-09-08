@@ -1,0 +1,9 @@
+# Admin-uploaded food photos are saved into this folder alongside the
+# site's built-in images. Even though uploads are validated by extension
+# and given random names, this is defense-in-depth: never let anything in
+# here execute as a script, no matter what got uploaded.
+<FilesMatch "\.(php|php\d|phtml|pl|py|cgi|sh)$">
+    Require all denied
+</FilesMatch>
+
+Options -Indexes
