@@ -97,6 +97,10 @@ include '../includes/staff_header.php';
     <?php endif; ?>
 </div>
 
+<script>
+    setTimeout(function () { window.location.reload(); }, 30000);
+</script>
+
 <?php include '../includes/footer.php'; ?>
 </body>
 </html>
