@@ -1,0 +1,10 @@
+# Secrets — never commit real credentials
+.env
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+*.swp
+
+# Uploaded/user-generated content (if you later move uploads out of /image)
+/uploads/
