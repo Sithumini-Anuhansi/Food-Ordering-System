@@ -2,6 +2,9 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../configure.php';
 
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
+
 if (isset($_POST['login'])) {
     csrf_verify();
 
@@ -15,7 +18,22 @@ if (isset($_POST['login'])) {
 
     if ($result && $result->num_rows === 1) {
         $row = $result->fetch_assoc();
+
+        // Locked out?
+        if (!empty($row['Lockout_Until']) && strtotime($row['Lockout_Until']) > time()) {
+            $minutes_left = ceil((strtotime($row['Lockout_Until']) - time()) / 60);
+            $_SESSION['error'] = "Too many failed attempts. Please try again in $minutes_left minute(s), or reset your password.";
+            header("Location: Login.php");
+            exit();
+        }
+
         if (password_verify($password, $row['Password'])) {
+            // Successful login — clear any lockout state
+            $reset = $conn->prepare("UPDATE users SET Failed_Login_Attempts = 0, Lockout_Until = NULL WHERE User_ID = ?");
+            $reset->bind_param("i", $row['User_ID']);
+            $reset->execute();
+            $reset->close();
+
             // Regenerate the session ID on privilege change to prevent session fixation
             session_regenerate_id(true);
 
@@ -34,12 +52,29 @@ if (isset($_POST['login'])) {
             }
             exit();
         } else {
-            $_SESSION['error'] = "Incorrect Password.";
+            $attempts = (int)$row['Failed_Login_Attempts'] + 1;
+            if ($attempts >= MAX_FAILED_ATTEMPTS) {
+                $lockout_until = date('Y-m-d H:i:s', time() + LOCKOUT_MINUTES * 60);
+                $upd = $conn->prepare("UPDATE users SET Failed_Login_Attempts = 0, Lockout_Until = ? WHERE User_ID = ?");
+                $upd->bind_param("si", $lockout_until, $row['User_ID']);
+                $upd->execute();
+                $upd->close();
+                $_SESSION['error'] = "Too many failed attempts. Your account is locked for " . LOCKOUT_MINUTES . " minutes.";
+            } else {
+                $upd = $conn->prepare("UPDATE users SET Failed_Login_Attempts = ? WHERE User_ID = ?");
+                $upd->bind_param("ii", $attempts, $row['User_ID']);
+                $upd->execute();
+                $upd->close();
+                // Deliberately vague — don't reveal whether the email exists.
+                $_SESSION['error'] = "Incorrect email or password.";
+            }
             header("Location: Login.php");
             exit();
         }
     } else {
-        $_SESSION['error'] = "No user found with this email.";
+        // Deliberately the same message as a wrong password — don't let this
+        // form be used to check which emails are registered.
+        $_SESSION['error'] = "Incorrect email or password.";
         header("Location: Login.php");
         exit();
     }
@@ -72,6 +107,7 @@ if (isset($_POST['login'])) {
 
             <input type="submit" name="login" value="LOGIN">
         </form>
+        <a class="login-link" href="forgot_password.php">Forgot password?</a>
         <a class="login-link" href="Register.php">Don't have an account? Register</a>
     </div>
     <script>
