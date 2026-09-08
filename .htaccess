@@ -1,0 +1,7 @@
+# Deny direct access to environment/config and raw SQL files.
+<FilesMatch "^(\.env(\.example)?|.*\.sql)$">
+    Require all denied
+</FilesMatch>
+
+# Don't allow directory listings.
+Options -Indexes

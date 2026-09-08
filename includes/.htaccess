@@ -1,0 +1,4 @@
+# Everything in here is meant to be pulled in via PHP include/require by
+# other pages, not requested directly — none of these fragments perform
+# their own auth checks (the including page does that).
+Require all denied
