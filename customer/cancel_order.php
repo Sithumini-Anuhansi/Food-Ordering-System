@@ -52,6 +52,8 @@ if ($upd->execute() && $upd->affected_rows > 0) {
     $restock_stmt->close();
 
     $_SESSION['success'] = "Order #$order_id cancelled.";
+    require_once '../includes/notifications.php';
+    notify_order_status_change($conn, $order_id, 'Cancelled');
 } else {
     $_SESSION['error'] = "Could not cancel this order — it may have already moved to preparation.";
 }

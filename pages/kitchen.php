@@ -22,6 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'], $_POST['n
         $stmt->bind_param("si", $new_status, $order_id);
         if ($stmt->execute()) {
             $_SESSION['flash'] = "Order #$order_id updated to \"$new_status\".";
+            require_once '../includes/notifications.php';
+            notify_order_status_change($conn, $order_id, $new_status);
         } else {
             $_SESSION['flash'] = "Could not update order #$order_id.";
         }
@@ -52,6 +54,7 @@ $staff_role_label = 'Kitchen';
 $staff_home = 'kitchen.php';
 include '../includes/staff_header.php';
 ?>
+<?php include '../includes/verification_banner.php'; ?>
 
 <div class="admin-orders-container">
     <h2>Kitchen Queue</h2>

@@ -14,8 +14,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'])) {
 
     $stmt = $conn->prepare("UPDATE orders SET Status = ? WHERE ID = ? AND Status = 'Ready for Delivery'");
     $stmt->bind_param("si", $new_status, $order_id);
-    if ($stmt->execute()) {
+    if ($stmt->execute() && $stmt->affected_rows > 0) {
         $_SESSION['flash'] = "Order #$order_id marked as delivered.";
+        require_once '../includes/notifications.php';
+        notify_order_status_change($conn, $order_id, $new_status);
     } else {
         $_SESSION['flash'] = "Could not update order #$order_id.";
     }
@@ -46,6 +48,7 @@ $staff_role_label = 'Delivery';
 $staff_home = 'delivery.php';
 include '../includes/staff_header.php';
 ?>
+<?php include '../includes/verification_banner.php'; ?>
 
 <div class="admin-orders-container">
     <h2>Ready for Delivery</h2>
