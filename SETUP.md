@@ -232,19 +232,112 @@ automatically via `database.sql`.
   count, average order value, orders by status, last-7-days sales, and
   top 5 items by quantity sold.
 
-### Deferred — needs your own accounts/infrastructure
+## 9. Fourth pass: payments, email, HTTPS, CI, legal pages
 
-These came up as "real system" gaps but can't be implemented without
-credentials or infrastructure only you can provide:
-- **Real payment gateway** (Stripe/PayHere/etc.) — needs a merchant
-  account and API keys; the schema is ready for it (see above).
-- **Real email/SMS notifications** — needs SMTP or an email/SMS provider
-  (SendGrid, Twilio, etc.); forgot-password is wired to attempt `mail()`
-  but that's it.
-- **Email verification on registration** — same email-sending dependency.
-- **HTTPS + `APP_FORCE_SECURE_COOKIES=true`** — needs a real domain and
-  TLS certificate.
-- **PDO migration, automated tests, CI/CD, staging environment,
-  monitoring/error tracking, legal pages (privacy policy/ToS)** — all
-  process/infrastructure work rather than something with a clear
-  "finished" state; ask if you want help starting any of these.
+**Run `mysql -u root -p food-ordering-system < data/migration_v3.sql`
+first** if you already have data — adds email verification and Stripe
+tracking columns without touching existing rows.
+
+Everything below is genuinely optional and off by default — leave the
+relevant `.env` values blank and the app behaves exactly as before
+(Cash on Delivery only, no real email sending, no HTTPS redirect).
+
+### Card payments (Stripe)
+
+Built directly against Stripe's REST API over cURL — no Composer/SDK
+needed (`includes/stripe.php`).
+
+1. Create a free Stripe account, then grab **test-mode** keys (no real
+   business or bank account required) from
+   https://dashboard.stripe.com/test/apikeys
+2. In `.env`, set `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY`.
+3. Set `APP_BASE_URL` to wherever you're running the app (e.g.
+   `http://localhost:8000` for `php -S`) — this is used to build the
+   success/cancel URLs Stripe redirects back to.
+4. "Card Payment" becomes selectable at checkout once
+   `STRIPE_SECRET_KEY` is set — the option is hidden/disabled otherwise.
+5. **Webhook (required for payment status to actually update):**
+   `orders.Payment_Status` is only ever flipped to `Paid` by
+   `webhooks/stripe_webhook.php` — Stripe's redirect back to your site is
+   just UI, never proof of payment on its own. For local testing, use the
+   [Stripe CLI](https://stripe.com/docs/stripe-cli):
+   ```
+   stripe listen --forward-to localhost:8000/webhooks/stripe_webhook.php
+   ```
+   This prints a `whsec_...` value — put that in `STRIPE_WEBHOOK_SECRET`.
+   For production, add the webhook URL in the Stripe dashboard instead
+   (Developers → Webhooks) listening for `checkout.session.completed`,
+   and use the signing secret it gives you.
+6. Test-mode card number `4242 4242 4242 4242`, any future expiry, any
+   CVC, completes a test payment.
+
+### Email (SMTP)
+
+`includes/mailer.php` is a small hand-rolled SMTP client (STARTTLS/SSL +
+AUTH LOGIN) — again, no Composer dependency. Works with any provider:
+
+- **Local testing**: [Mailtrap](https://mailtrap.io) (free tier) — catches
+  mail in a web inbox instead of actually delivering it, ideal for dev.
+- **Production**: SendGrid, Amazon SES, your own mail server, or Gmail
+  with an [app password](https://myaccount.google.com/apppasswords)
+  (regular Gmail passwords won't work over SMTP).
+
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` (`tls` or `ssl`), `SMTP_USER`,
+`SMTP_PASS`, `SMTP_FROM` in `.env`. Leave `SMTP_HOST` blank to disable —
+the app falls back to logging what would have been sent instead of
+erroring.
+
+Wired into: registration (email verification), forgot password, order
+confirmation, and every order status change (kitchen/delivery/admin
+updates all notify the customer).
+
+### Email verification
+
+New accounts start with `Email_Verified = 0` and get a verification link
+by email. Unverified users can still log in and use the site (a banner
+prompts them to verify, with a resend link) rather than being locked out
+entirely — safer default in case email delivery has issues. Accounts
+that existed before this migration are automatically marked verified.
+
+### HTTPS enforcement
+
+Set `APP_FORCE_HTTPS=true` in `.env` once you have a real domain and TLS
+certificate — every HTTP request then 301-redirects to HTTPS, and an
+HSTS header is sent. **Leave this `false` for local dev** — `php -S`
+doesn't serve HTTPS at all, so turning this on locally breaks every page
+load. Also checks the `X-Forwarded-Proto` header, so it works correctly
+behind a reverse proxy/load balancer that terminates TLS itself.
+
+### CI
+
+`.github/workflows/ci.yml` runs on every push/PR: lints every PHP file
+for syntax errors (`php -l`) and fails the build if `.env` is ever
+accidentally committed. No secrets or setup needed — it just runs once
+this is pushed to GitHub.
+
+### Legal pages
+
+`Privacy.php` and `Terms.php`, linked in the footer. **These are
+templates, not legal advice** — have an actual lawyer review and adapt
+them (especially data retention, liability, and dispute sections) before
+this handles real customers.
+
+### Monitoring
+
+`health.php` returns JSON (`{"status":"ok","database":"connected",...}`)
+and a 503 if the database is unreachable — point any uptime monitor
+(UptimeRobot, Better Uptime, or your own cron+curl) at it. For real error
+tracking (stack traces, alerting), consider Sentry — needs a DSN from
+your own Sentry account, not wired up here.
+
+### Deliberately not done this round: PDO migration & automated tests
+
+Both came up as recommendations, but neither is something to bolt on
+alongside everything above without real risk. The app currently uses
+`mysqli` consistently across ~45 files — migrating to PDO is a large,
+mechanical, error-prone rewrite that deserves its own dedicated pass
+with careful testing, not a rushed pass squeezed in with unrelated
+features. Same for automated tests: writing them well means testing
+against the *actual* rewritten code, so it makes sense to sequence
+tests after (or alongside) that migration rather than before it. Ask
+for either as a focused next task whenever you're ready.

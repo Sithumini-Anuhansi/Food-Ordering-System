@@ -2,17 +2,20 @@ CREATE DATABASE IF NOT EXISTS `food-ordering-system`;
 USE `food-ordering-system`;
 
 CREATE TABLE IF NOT EXISTS users (
-    User_ID                INT AUTO_INCREMENT PRIMARY KEY,
-    Role                   VARCHAR(20)  NOT NULL,   -- 'admin', 'customer', 'kitchen', 'delivery'
-    Name                   VARCHAR(100) NOT NULL,
-    Email                  VARCHAR(150) NOT NULL UNIQUE,
-    Password               VARCHAR(255) NOT NULL,   -- stored with password_hash()
-    Phone_Number           VARCHAR(20),
-    Address                VARCHAR(255),
-    Reset_Token            VARCHAR(64)  NULL,       -- forgot-password flow
-    Reset_Token_Expiry     DATETIME     NULL,
-    Failed_Login_Attempts  INT NOT NULL DEFAULT 0,  -- login rate limiting
-    Lockout_Until          DATETIME     NULL
+    User_ID                    INT AUTO_INCREMENT PRIMARY KEY,
+    Role                       VARCHAR(20)  NOT NULL,   -- 'admin', 'customer', 'kitchen', 'delivery'
+    Name                       VARCHAR(100) NOT NULL,
+    Email                      VARCHAR(150) NOT NULL UNIQUE,
+    Password                   VARCHAR(255) NOT NULL,   -- stored with password_hash()
+    Phone_Number               VARCHAR(20),
+    Address                    VARCHAR(255),
+    Reset_Token                VARCHAR(64)  NULL,       -- forgot-password flow
+    Reset_Token_Expiry         DATETIME     NULL,
+    Failed_Login_Attempts      INT NOT NULL DEFAULT 0,  -- login rate limiting
+    Lockout_Until              DATETIME     NULL,
+    Email_Verified             TINYINT(1) NOT NULL DEFAULT 0,
+    Verification_Token         VARCHAR(64)  NULL,
+    Verification_Token_Expiry  DATETIME     NULL
 );
 
 CREATE TABLE IF NOT EXISTS food_items (
@@ -40,6 +43,7 @@ CREATE TABLE IF NOT EXISTS orders (
     Special_Instructions   TEXT NULL,
     Payment_Method         VARCHAR(30) NOT NULL DEFAULT 'Cash on Delivery',
     Payment_Status         VARCHAR(20) NOT NULL DEFAULT 'Unpaid',
+    Stripe_Session_ID      VARCHAR(255) NULL,
     FOREIGN KEY (User_ID) REFERENCES users(User_ID)
 );
 
@@ -73,14 +77,15 @@ CREATE TABLE IF NOT EXISTS team_members (
 -- Seed an admin account so you can log in immediately.
 -- Password below is: admin123
 -- (hash generated with PHP's password_hash(), PASSWORD_DEFAULT/bcrypt)
-INSERT INTO users (Role, Name, Email, Password, Phone_Number, Address)
+INSERT INTO users (Role, Name, Email, Password, Phone_Number, Address, Email_Verified)
 VALUES (
     'admin',
     'Admin',
     'admin@example.com',
     '$2y$10$kd52ywbT8BkOCrlqe8YchuKlXMCiMj49dathmG7CkQvjLbl9/OU0K',
     '0000000000',
-    'HQ'
+    'HQ',
+    1
 );
 
 -- Seed the 70 menu items (moved out of the old hardcoded Menu.php)
