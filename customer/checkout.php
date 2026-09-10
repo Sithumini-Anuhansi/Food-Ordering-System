@@ -3,6 +3,7 @@ include '../includes/session_check.php';
 checkRole('customer');
 include '../configure.php';
 include '../includes/pricing.php';
+include '../includes/stripe.php';
 
 $user_id = $_SESSION['user_id'];
 
@@ -139,7 +140,11 @@ $default_address = $profile['Address'] ?? '';
             Payment Method:
             <select name="payment_method" required>
                 <option value="Cash on Delivery">Cash on Delivery</option>
-                <option value="Card" disabled>Card Payment (coming soon)</option>
+                <?php if (stripe_is_configured()): ?>
+                    <option value="Card">Card Payment (via Stripe)</option>
+                <?php else: ?>
+                    <option value="Card" disabled>Card Payment (not configured)</option>
+                <?php endif; ?>
             </select>
         </label>
 
