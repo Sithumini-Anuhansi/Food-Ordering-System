@@ -18,6 +18,7 @@
 
 <body class="customer-body">
 <?php include '../includes/customer_header.php'; ?>
+<?php include '../includes/verification_banner.php'; ?>
 
     <!-- Sidebar menu -->
     <div class="sidebar-menu" id="sidebarMenu" role="navigation" aria-label="Customer menu">
