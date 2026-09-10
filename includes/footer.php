@@ -38,7 +38,11 @@
 
     </div>
 
-    <p class="end">Designed by <span><i class="fa-solid fa-face-grin"></i> FD Master Code</span></p>
+    <p class="end">
+        <a href="/Privacy.php" style="color:inherit;">Privacy Policy</a> &middot;
+        <a href="/Terms.php" style="color:inherit;">Terms of Service</a> &middot;
+        Designed by <span><i class="fa-solid fa-face-grin"></i> FD Master Code</span>
+    </p>
 </footer>
 
 <script src="/script.js"></script>
