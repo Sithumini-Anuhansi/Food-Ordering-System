@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  lint:
+    name: PHP Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mysqli, curl
+
+      - name: Lint every PHP file (php -l)
+        run: |
+          error_found=0
+          while IFS= read -r -d '' file; do
+            if ! php -l "$file" > /tmp/lint_output.txt 2>&1; then
+              echo "::error file=$file::Syntax error"
+              cat /tmp/lint_output.txt
+              error_found=1
+            fi
+          done < <(find . -name "*.php" -not -path "./vendor/*" -print0)
+          exit $error_found
+
+      - name: Check .env is not committed
+        run: |
+          if git ls-files --error-unmatch .env > /dev/null 2>&1; then
+            echo "::error::.env is committed to the repo — it should only ever exist locally (see .gitignore)."
+            exit 1
+          fi
+          echo ".env is correctly not tracked."
