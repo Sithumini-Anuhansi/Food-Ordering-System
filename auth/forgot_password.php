@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/bootstrap.php';
 require_once __DIR__ . '/../configure.php';
+require_once __DIR__ . '/../includes/mailer.php';
 
 $error = '';
 $reset_link = null; // shown directly on screen as a fallback when there's no SMTP configured
@@ -34,10 +35,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['request_reset'])) {
             $reset_link = (isset($_SERVER['HTTPS']) ? 'https://' : 'http://') . $_SERVER['HTTP_HOST']
                 . dirname($_SERVER['PHP_SELF']) . '/reset_password.php?token=' . $raw_token;
 
-            // Best-effort email — silently ignored if the server has no mail
-            // transport configured. The link is always shown below too, so
-            // this still works for local/dev testing without SMTP set up.
-            @mail($email, 'Reset your password', "Reset your password here: $reset_link", "From: no-reply@example.com");
+            // Real SMTP send if configured; otherwise a logged best-effort
+            // fallback. The link is always shown below too, so this still
+            // works for local/dev testing without SMTP set up.
+            try {
+                send_email($email, 'Reset your password', "<p>Reset your password here:</p><p><a href=\"$reset_link\">$reset_link</a></p>");
+            } catch (\Throwable $e) {
+                error_log("Password reset email failed: " . $e->getMessage());
+            }
         }
 
         $_SESSION['reset_requested'] = true;

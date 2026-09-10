@@ -38,6 +38,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $upd->bind_param("si", $new_status, $id);
         if ($upd->execute()) {
             $_SESSION['success'] = "Order #$id updated to \"$new_status\".";
+            if ($new_status !== $order['Status']) {
+                require_once '../includes/notifications.php';
+                notify_order_status_change($conn, $id, $new_status);
+            }
             header("Location: manage_orders.php");
             exit();
         } else {
