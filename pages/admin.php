@@ -15,6 +15,7 @@
 </head>
 <body class="admin-body">
     <?php include '../includes/admin_header.php'; ?>
+    <?php include '../includes/verification_banner.php'; ?>
 
     <div class="admin-container">
         <h2>Welcome, <?php echo isset($_SESSION['name']) ? htmlspecialchars($_SESSION['name']) : 'Admin'; ?> (Admin)</h2>
