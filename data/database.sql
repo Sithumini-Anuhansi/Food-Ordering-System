@@ -44,7 +44,10 @@ CREATE TABLE IF NOT EXISTS orders (
     Payment_Method         VARCHAR(30) NOT NULL DEFAULT 'Cash on Delivery',
     Payment_Status         VARCHAR(20) NOT NULL DEFAULT 'Unpaid',
     Stripe_Session_ID      VARCHAR(255) NULL,
-    FOREIGN KEY (User_ID) REFERENCES users(User_ID)
+    Assigned_Driver_ID     INT NULL,    -- which delivery account claimed this order
+    Estimated_Ready_Time   DATETIME NULL,   -- set by kitchen when they start preparing
+    FOREIGN KEY (User_ID) REFERENCES users(User_ID),
+    FOREIGN KEY (Assigned_Driver_ID) REFERENCES users(User_ID)
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
@@ -63,7 +66,12 @@ CREATE TABLE IF NOT EXISTS reviews (
     Image          VARCHAR(255),
     Rating         DECIMAL(2,1) NOT NULL DEFAULT 5.0,
     Review_Text    TEXT NOT NULL,
-    Display_Order  INT NOT NULL DEFAULT 0
+    Display_Order  INT NOT NULL DEFAULT 0,
+    Order_ID       INT NULL,           -- set when a customer rates a real order
+    User_ID        INT NULL,
+    Approved       TINYINT(1) NOT NULL DEFAULT 1,  -- customer-submitted ratings start at 0 (admin must approve)
+    FOREIGN KEY (Order_ID) REFERENCES orders(ID),
+    FOREIGN KEY (User_ID) REFERENCES users(User_ID)
 );
 
 CREATE TABLE IF NOT EXISTS team_members (

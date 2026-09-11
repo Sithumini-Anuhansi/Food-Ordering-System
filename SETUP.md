@@ -341,3 +341,37 @@ features. Same for automated tests: writing them well means testing
 against the *actual* rewritten code, so it makes sense to sequence
 tests after (or alongside) that migration rather than before it. Ask
 for either as a focused next task whenever you're ready.
+
+## 10. Fifth pass: real-app workflow (no visual/CSS changes)
+
+**Run `mysql -u root -p food-ordering-system < data/migration_v4.sql`
+first** if you already have data — adds delivery claiming, kitchen ETA,
+and review moderation columns without touching existing rows.
+
+This pass deliberately touched zero CSS — every change here is
+behavior/workflow, matching how a real delivery platform actually
+functions rather than how it looks:
+
+- **Delivery claiming**: any delivery account could previously mark *any*
+  ready order as delivered — a real race condition if two drivers are
+  online at once. `pages/delivery.php` now has two sections: "Available
+  to Claim" (unclaimed orders, anyone can grab one) and "My Deliveries"
+  (orders you've claimed — only you can mark them delivered, or release
+  them back to the pool). The claim itself is race-safe at the database
+  level (`UPDATE ... WHERE Assigned_Driver_ID IS NULL`), not just a UI
+  suggestion.
+- **Kitchen accept + ETA**: starting an order now asks for an estimated
+  prep time (10/15/20/30/45 min), stored as `Estimated_Ready_Time` and
+  shown to the customer.
+- **Live order tracking**: `customer/order_history.php` now shows the
+  kitchen's ETA and auto-refreshes every 20 seconds *only* while you have
+  an active (non-final) order — no endless polling once everything's
+  delivered.
+- **"Order Again"**: one click on any past order rebuilds a fresh cart
+  from its items (at current prices/availability) and drops you straight
+  into checkout — reuses the existing checkout flow rather than a
+  separate page.
+- **Post-delivery ratings**: customers can rate a `Delivered` order once;
+  it lands in `admin/manage_reviews.php` for approval before it appears
+  on the public Reviews page. Existing seeded/admin-added reviews are
+  unaffected (auto-approved).
