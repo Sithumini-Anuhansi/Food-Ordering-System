@@ -18,8 +18,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'], $_POST['n
     $new_status = $_POST['new_status'];
 
     if (in_array($new_status, $allowed_transitions, true)) {
-        $stmt = $conn->prepare("UPDATE orders SET Status = ? WHERE ID = ?");
-        $stmt->bind_param("si", $new_status, $order_id);
+        if ($new_status === 'Preparing') {
+            // Kitchen is accepting the order — record how long they expect it to take.
+            $eta_minutes = max(1, intval($_POST['eta_minutes'] ?? 15));
+            $stmt = $conn->prepare("UPDATE orders SET Status = ?, Estimated_Ready_Time = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE ID = ?");
+            $stmt->bind_param("sii", $new_status, $eta_minutes, $order_id);
+        } else {
+            $stmt = $conn->prepare("UPDATE orders SET Status = ? WHERE ID = ?");
+            $stmt->bind_param("si", $new_status, $order_id);
+        }
         if ($stmt->execute()) {
             $_SESSION['flash'] = "Order #$order_id updated to \"$new_status\".";
             require_once '../includes/notifications.php';
@@ -33,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['order_id'], $_POST['n
     exit();
 }
 
-$query = "SELECT o.ID, u.Name AS Customer_Name, o.Total, o.Status, o.Order_Time
+$query = "SELECT o.ID, u.Name AS Customer_Name, o.Total, o.Status, o.Order_Time, o.Estimated_Ready_Time
           FROM orders o
           JOIN users u ON o.User_ID = u.User_ID
           WHERE o.Status IN ('Pending', 'Preparing')
@@ -102,10 +109,24 @@ include '../includes/staff_header.php';
                     </td>
                     <td><?= htmlspecialchars($row['Order_Time']) ?></td>
                     <td>
+                        <?php if ($row['Status'] === 'Preparing' && $row['Estimated_Ready_Time']): ?>
+                            <div style="margin-bottom:6px; color:#666; font-size:0.85em;">
+                                ETA: <?= htmlspecialchars(date('g:i A', strtotime($row['Estimated_Ready_Time']))) ?>
+                            </div>
+                        <?php endif; ?>
                         <form method="POST" style="display:inline;">
                             <?= csrf_field() ?>
                             <input type="hidden" name="order_id" value="<?= (int)$row['ID'] ?>">
                             <input type="hidden" name="new_status" value="<?= htmlspecialchars($next_status) ?>">
+                            <?php if ($row['Status'] === 'Pending'): ?>
+                                <select name="eta_minutes" style="margin-right:6px;">
+                                    <option value="10">10 min</option>
+                                    <option value="15" selected>15 min</option>
+                                    <option value="20">20 min</option>
+                                    <option value="30">30 min</option>
+                                    <option value="45">45 min</option>
+                                </select>
+                            <?php endif; ?>
                             <button type="submit" class="action-link" style="border:none; background:none; cursor:pointer; color:#3498db; font-weight:bold;">
                                 <?= htmlspecialchars($button_label) ?>
                             </button>
