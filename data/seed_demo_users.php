@@ -44,7 +44,7 @@ foreach ($demo_users as $u) {
     }
 
     $hash = password_hash($u['password'], PASSWORD_DEFAULT);
-    $stmt = $conn->prepare("INSERT INTO users (Role, Name, Email, Password, Phone_Number, Address) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt = $conn->prepare("INSERT INTO users (Role, Name, Email, Password, Phone_Number, Address, Email_Verified) VALUES (?, ?, ?, ?, ?, ?, 1)");
     $stmt->bind_param("ssssss", $u['role'], $u['name'], $u['email'], $hash, $u['phone'], $u['address']);
 
     if ($stmt->execute()) {
