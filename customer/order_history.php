@@ -39,7 +39,7 @@ if (!isset($_SESSION['user_id']))
 $user_id = $_SESSION['user_id'];
 
 // Select orders for the user
-$query = "SELECT ID, Total, Status, Order_Time, Delivery_Fee, Tax, Delivery_Address, Delivery_Time, Special_Instructions, Payment_Method, Payment_Status
+$query = "SELECT ID, Total, Status, Order_Time, Delivery_Fee, Tax, Delivery_Address, Delivery_Time, Special_Instructions, Payment_Method, Payment_Status, Estimated_Ready_Time
           FROM orders WHERE User_ID = ? ORDER BY Order_Time DESC";
 $stmt = $conn->prepare($query);
 
@@ -63,6 +63,9 @@ if (!$result)
     exit;
 }
 
+$has_active_order = false;
+$active_statuses = ['Pending', 'Preparing', 'Ready for Delivery'];
+
 if ($result->num_rows > 0) 
 {
     echo "<table class='order-history-table'>";
@@ -70,6 +73,10 @@ if ($result->num_rows > 0)
 
     while ($row = $result->fetch_assoc()) 
     {
+        if (in_array($row['Status'], $active_statuses, true)) {
+            $has_active_order = true;
+        }
+
         // Look up the items belonging to this order
         $items_text = "—";
         $items_stmt = $conn->prepare(
@@ -104,13 +111,18 @@ if ($result->num_rows > 0)
         $total_text = "$" . number_format($row['Total'], 2)
             . "<br><span style='color:#666;font-size:0.85em;'>incl. $" . number_format($row['Delivery_Fee'], 2) . " delivery, $" . number_format($row['Tax'], 2) . " tax</span>";
 
+        $status_text = htmlspecialchars($row['Status']);
+        if ($row['Status'] === 'Preparing' && $row['Estimated_Ready_Time']) {
+            $status_text .= "<br><span style='color:#666;font-size:0.85em;'>ETA " . htmlspecialchars(date('g:i A', strtotime($row['Estimated_Ready_Time']))) . "</span>";
+        }
+
         echo "<tr>";
         echo "<td>" . htmlspecialchars($row['ID']) . "</td>";
         echo "<td>" . $items_text . "</td>";
         echo "<td>" . $delivery_text . "</td>";
         echo "<td>" . $payment_text . "</td>";
         echo "<td>" . $total_text . "</td>";
-        echo "<td>" . htmlspecialchars($row['Status']) . "</td>";
+        echo "<td>" . $status_text . "</td>";
         echo "<td>" . htmlspecialchars($row['Order_Time']) . "</td>";
         echo "<td>";
         if ($row['Status'] === 'Pending') {
@@ -119,7 +131,24 @@ if ($result->num_rows > 0)
                . "<input type='hidden' name='order_id' value='" . (int)$row['ID'] . "'>"
                . "<button type='submit' style='border:none;background:none;cursor:pointer;color:#e74c3c;font:inherit;'>Cancel</button>"
                . "</form>";
-        } else {
+        }
+        if ($row['Status'] === 'Delivered') {
+            $rating_stmt = $conn->prepare("SELECT Rating FROM reviews WHERE Order_ID = ? AND User_ID = ?");
+            $rating_stmt->bind_param("ii", $row['ID'], $user_id);
+            $rating_stmt->execute();
+            $existing_rating = $rating_stmt->get_result()->fetch_assoc();
+            $rating_stmt->close();
+
+            if ($existing_rating) {
+                echo "<div style='color:#f39c12;'>" . str_repeat('★', (int)round($existing_rating['Rating'])) . "</div>";
+            } else {
+                echo "<a class='action-link' href='rate_order.php?order_id=" . (int)$row['ID'] . "'>Rate Order</a><br>";
+            }
+        }
+        if (in_array($row['Status'], ['Delivered', 'Cancelled'], true)) {
+            echo "<a class='action-link' href='checkout.php?reorder_from=" . (int)$row['ID'] . "'>Order Again</a>";
+        }
+        if (!in_array($row['Status'], array_merge(['Pending'], ['Delivered', 'Cancelled']), true)) {
             echo "—";
         }
         echo "</td>";
@@ -133,6 +162,10 @@ else
 }
 
 echo "</div>";
+
+if ($has_active_order) {
+    echo "<script>setTimeout(function () { window.location.reload(); }, 20000);</script>";
+}
 
 include '../includes/footer.php';
 ?>

@@ -8,19 +8,42 @@ include '../includes/stripe.php';
 $user_id = $_SESSION['user_id'];
 
 // --- Build & validate the cart from what was submitted ---
-$submitted_qty = $_POST['Quantity'] ?? null;
+// Two ways to get here: a fresh selection from the menu (POST), or
+// "Order Again" on a past order (GET ?reorder_from=<order_id>).
+$reorder_from = intval($_GET['reorder_from'] ?? 0);
+$qty_by_item = [];
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($submitted_qty)) {
-    $_SESSION['order_error'] = "Please select at least one item before ordering.";
-    header("Location: browse_menu.php");
-    exit();
+if ($reorder_from > 0) {
+    // Only ever reorder your own past order.
+    $stmt = $conn->prepare("SELECT Item_ID, Quantity FROM order_items WHERE Order_ID = ? AND Order_ID IN (SELECT ID FROM orders WHERE User_ID = ?)");
+    $stmt->bind_param("ii", $reorder_from, $user_id);
+    $stmt->execute();
+    $items_result = $stmt->get_result();
+    while ($r = $items_result->fetch_assoc()) {
+        $qty_by_item[$r['Item_ID']] = $r['Quantity'];
+    }
+    $stmt->close();
+
+    if (empty($qty_by_item)) {
+        $_SESSION['order_error'] = "That order couldn't be found.";
+        header("Location: order_history.php");
+        exit();
+    }
+} else {
+    $submitted_qty = $_POST['Quantity'] ?? null;
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($submitted_qty)) {
+        $_SESSION['order_error'] = "Please select at least one item before ordering.";
+        header("Location: browse_menu.php");
+        exit();
+    }
+    csrf_verify();
+    $qty_by_item = $submitted_qty;
 }
-csrf_verify();
 
 $cart = [];       // Item_ID => ['name'=>, 'price'=>, 'qty'=>, 'image'=>]
 $subtotal = 0.0;
 
-foreach ($submitted_qty as $item_id => $qty) {
+foreach ($qty_by_item as $item_id => $qty) {
     $item_id = (int)$item_id;
     $qty = (int)$qty;
     if ($qty <= 0) continue;
@@ -48,7 +71,9 @@ foreach ($submitted_qty as $item_id => $qty) {
 }
 
 if (empty($cart)) {
-    $_SESSION['order_error'] = "Those items are no longer available. Please choose something else.";
+    $_SESSION['order_error'] = $reorder_from > 0
+        ? "Those items aren't available anymore — take a look at the menu for something similar."
+        : "Those items are no longer available. Please choose something else.";
     header("Location: browse_menu.php");
     exit();
 }
