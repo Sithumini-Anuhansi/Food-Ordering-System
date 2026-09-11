@@ -8,7 +8,7 @@
         <div class="review_box">
 
 <?php
-$query = "SELECT * FROM reviews ORDER BY Display_Order ASC";
+$query = "SELECT * FROM reviews WHERE Approved = 1 ORDER BY Display_Order ASC, Review_ID DESC";
 $result = mysqli_query($conn, $query);
 
 if ($result) {
@@ -20,7 +20,7 @@ if ($result) {
             <div class="review_card">
 
                 <div class="review_profile">
-                    <img src="image/<?= htmlspecialchars($review['Image']) ?>">
+                    <img src="image/<?= htmlspecialchars($review['Image'] ?: 'Food-Plate.png') ?>">
                 </div>
 
                 <div class="review_text">
