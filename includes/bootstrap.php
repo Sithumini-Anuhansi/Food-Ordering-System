@@ -49,15 +49,34 @@ if (!defined('APP_BOOTSTRAPPED')) {
         header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     }
 
+    // Session name and cookie configuration to support multiple frontends
+    // (customer / staff / admin) sharing the same backend. Configure per-site
+    // via .env: APP_SITE, SESSION_NAME, SESSION_COOKIE_DOMAIN, APP_FORCE_SECURE_COOKIES.
+    $sessionName = env('SESSION_NAME', 'fos_' . env('APP_SITE', 'customer'));
+    if (session_name() !== $sessionName) {
+        session_name($sessionName);
+    }
+
+    $cookieSecure = (env('APP_FORCE_SECURE_COOKIES', 'false') === 'true');
+    $site = env('APP_SITE', 'customer'); // 'customer' | 'staff' | 'admin'
+    $sameSite = ($site === 'admin') ? 'Strict' : 'Lax';
+
+    $cookieDomain = env('SESSION_COOKIE_DOMAIN', '');
+    // If SESSION_COOKIE_DOMAIN is empty, leave domain as null to get a host-only cookie.
+    $cookieDomain = ($cookieDomain === '') ? null : $cookieDomain;
+
     if (session_status() === PHP_SESSION_NONE) {
-        session_set_cookie_params([
+        $params = [
             'lifetime' => 0,
             'path'     => '/',
             'httponly' => true,
-            'samesite' => 'Lax',
-            // Flip this on once the site is served over HTTPS:
-            'secure'   => (env('APP_FORCE_SECURE_COOKIES', 'false') === 'true'),
-        ]);
+            'secure'   => $cookieSecure,
+            'samesite' => $sameSite,
+        ];
+        if ($cookieDomain !== null) {
+            $params['domain'] = $cookieDomain;
+        }
+        session_set_cookie_params($params);
         session_start();
     }
 
