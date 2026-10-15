@@ -1,6 +1,6 @@
 <?php
-include '../includes/session_check.php';
-checkRole('customer');
+include '../includes/auth.php';
+ensure_role('customer');
 include '../configure.php';
 include '../includes/pricing.php';
 include '../includes/stripe.php';
