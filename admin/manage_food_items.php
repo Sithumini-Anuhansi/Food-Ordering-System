@@ -1,6 +1,6 @@
 <?php
-include '../includes/session_check.php';
-checkRole('admin');
+include '../includes/auth.php';
+ensure_role('admin');
 include '../configure.php';
 ?>
 <!DOCTYPE html>
