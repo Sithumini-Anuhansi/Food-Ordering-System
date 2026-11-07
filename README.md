@@ -1,5 +1,7 @@
 # 🍔 Food Ordering System
 
+![Food Logo](image/Food.png)
+
 A full-stack **PHP and MySQL food ordering web application** with separate workflows for customers, kitchen staff, delivery staff, and administrators.
 The system provides a complete restaurant ordering flow — from browsing food items and placing an order to kitchen preparation, delivery, order history, reviews, and administrative analytics.
 
